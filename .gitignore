@@ -1,0 +1,40 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python cache / bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Pytest / test cache
+.pytest_cache/
+.cache/
+
+# Installed toolboxes / third-party packages (if accidentally vendored in-repo)
+site-packages/
+*.dist-info/
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.swp
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Jupyter notebook checkpoints (if any exploratory notebooks are used)
+.ipynb_checkpoints/
+
+# Environment variables / secrets (if any config/API keys used, e.g. PLC IP, camera calibration)
+.env
+
+# Swift/Robotics Toolbox generated logs (if any local run artifacts appear)
+*.log
+# --- Teammates' own robot model files: left for them to commit themselves ---
+mz07.py
+rs007.py
