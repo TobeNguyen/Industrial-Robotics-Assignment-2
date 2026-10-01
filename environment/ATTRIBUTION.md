@@ -1,6 +1,6 @@
 # conveyor_belt.dae — origin and license
 
-File nay KHONG phai do nhom tu ve. Phai ghi nguon trong repo va trong video.
+These files are not designed by ourselves. References must be included.
 
 - Siyrce: IFRA-Cranfield / IFRA_ConveyorBelt (Gazebo-ROS2 Conveyor Belt Plugin)
   https://github.com/IFRA-Cranfield/IFRA_ConveyorBelt
