@@ -38,3 +38,9 @@ Thumbs.db
 # --- Teammates' own robot model files: left for them to commit themselves ---
 mz07.py
 rs007.py
+
+# --- Teammates' own task/logic files: left for them to commit themselves ---
+kawasaki_rs007n_task.py
+nachi_mz07_task.py
+main.py
+workcell.py
