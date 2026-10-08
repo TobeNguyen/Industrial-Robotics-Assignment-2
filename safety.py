@@ -52,7 +52,8 @@ def _point_segment_distance(point, seg_a, seg_b):
 
 def _segment_segment_distance(p1,p2,q1,q2):
     """
-    Shortest distance between two 3D line segments P1P2 and Q1Q2
+    Shortest distance between two 3D line segments: P1 -> P2 and Q1 -> Q2
+
     """
     p1 = np.asarray(p1, dtype=float)
     p2 = np.asarray(p2, dtype=float)
@@ -186,76 +187,66 @@ class CollisionSafety:
 
         return {"safe": True, "distance": minimum_distance, "reason": "No collision risk with spherical obstacle" }
 
-    #Singularity Safety
-        """
-        
-        Detects whether a robot is approaching a kinematic singularity using the Jacobian matrix.
+class SingularitySafety:
+    """
+    Detects whether a robot is approaching a kinematic
+    singularity using the Jacobian matrix.
+    """
 
-        Main indicators:
-            signma_min => smalles singular value of J
-
-        Condition_number:
-            ratio sigma_max/sigma_min
-
-        Manipulability:
-            product of singular values
-
-        Near singularity:
-            sigma_min -> 0
-            condition number -> infinity
-            manipulability -> 0
-
-        """
-    def __init__(self, sigma_warning = 0.05, sigma_stop = 0.01, condition_warning = 100.0):
+    def __init__(self,sigma_warning=0.05,sigma_stop=0.01,condition_warning=100.0):
         self.sigma_warning = sigma_warning
         self.sigma_stop = sigma_stop
         self.condition_warning = condition_warning
-    def metrics(self,arm, q=None):
 
+    def metrics(self, arm, q=None):
         robot = _get_robot(arm)
+
         if q is None:
             q = robot.q
 
-        J = np.asarray(robot.jacob0(q), dtype=float)
+        J = np.asarray(robot.jacob0(q),dtype=float)
 
-        singular_values = np.linalg.svd(J, compute_uv=False)
+        singular_values = np.linalg.svd(J,compute_uv=False)
 
         sigma_max = np.max(singular_values)
         sigma_min = np.min(singular_values)
 
-        if sigma_min <1e-12:
+        if sigma_min < 1e-12:
             condition_number = np.inf
         else:
-            condition_number = sigma_max/sigma_min
+            condition_number = sigma_max / sigma_min
 
-        #Equivalent to Yoshikawa's manipulability measure
-        #a square full-rank Jacobian
-        manipulability = float(np.prod(singular_values))
+        manipulability = float(
+            np.prod(singular_values)
+        )
 
-        rank = np.linalg.matrix_rank(J)
+        rank = int(
+            np.linalg.matrix_rank(J)
+        )
 
-        return {"jacobian": J, "singular_values": singular_values, "sigma_max": float(sigma_max), "sigma_min": float(sigma_min), "condition_number": float(condition_number), "manipulability": manipulability, "rank": int(rank)}
-        
-    def check(self,arm, q=None):
+        return {"jacobian": J,"singular_values": singular_values,"sigma_max": float(sigma_max),"sigma_min": float(sigma_min),"condition_number": float(condition_number),"manipulability": manipulability,"rank": rank}
 
-        data = self.metrics(arm, q)
+    def check(self, arm, q=None):
+        data = self.metrics(arm,q)
 
         sigma = data["sigma_min"]
         condition = data["condition_number"]
         rank = data["rank"]
 
-        #Severe singularity
-
+        # Severe singularity
         if rank < 6 or sigma <= self.sigma_stop:
-
-            data.update({"safe": False, "level": "stop", "reason": "Severe singularity detected"})
+            data.update({"safe": False,"level": "STOP","reason": "Severe singularity detected"})
             return data
 
-        #Approaching singularity
-        if(sigma <= self.sigma_warning or condition >= self.condition_warning):
-            data.update({"safe": False, "level": "warning", "reason": "Approaching singularity"})
+        # Approaching singularity
+        if (
+            sigma <= self.sigma_warning
+            or condition >= self.condition_warning
+        ):
+            data.update({"safe": True,"level": "WARNING","reason": "Approaching singularity"})
             return data
 
-        #Robot is in a safe configuration
-        data.update({"safe": True, "level": "Safe", "reason": "Robot is in a safe configuration"})
+        # Safe configuration
+        data.update({"safe": True,"level": "SAFE","reason": "Robot is in a safe configuration"})
+
         return data
