@@ -1,6 +1,13 @@
 # safety.py
 import numpy as np
 
+ # DEFAULT ROBOT VELOCITY LIMITS
+ROBOT_VELOCITY_LIMITS = {
+    "Kawasaki": 1.0,
+    "Staubli": 1.0,
+    "Nachi": 1.0
+}
+
 def _get_robot(arm):
     """"
     Accept either:
@@ -151,7 +158,11 @@ class CollisionSafety:
         link_count = len(points)-1
 
         for i in range(link_count):
-            for j in range(i+1,link_count): #skip adjacent links
+            for j in range(i+1,link_count): 
+
+                # Adjacent links share a joint, so ignore them
+                if abs(i-j) == 1:
+                    continue
 
                 #Neighbouring links share a joint, therefore they should not be treated as a collision
                 distance = _segment_segment_distance(points[i], points[i+1], points[j], points[j+1] )
@@ -182,8 +193,8 @@ class CollisionSafety:
             surface_distance = distance - sphere_radius
             minimum_distance = min(minimum_distance, surface_distance)
 
-            if distance < clearance:
-                return {"safe": False, "distance": distance, "link": (i), "reason":"Collision risk with spherical obstacle" }
+            if surface_distance < clearance:
+                return {"safe": False, "distance": surface_distance, "link": (i), "reason":"Collision risk with spherical obstacle" }
 
         return {"safe": True, "distance": minimum_distance, "reason": "No collision risk with spherical obstacle" }
 
@@ -250,3 +261,105 @@ class SingularitySafety:
         data.update({"safe": True,"level": "SAFE","reason": "Robot is in a safe configuration"})
 
         return data
+
+#ROBOT VELOCITY & E-STOP SAFETY
+class RobotSafetyController:
+    """
+    Controls the maximum allowable robot velocity based on:
+    
+    1. Operator/manual velocity request
+    2. Collision status (robot-to-robot, self-collision, robot-to-obstacle)
+    3. Singularity status (approaching kinematic singularity)
+    4. Emergency stop status (E-STOP button pressed)
+
+    Safety alwasy overrides the operator setting.
+    
+    """
+    def __init__(self, max_velocity=1.0, warning_scale=0.5):
+
+        self.max_velocity = float(max_velocity)
+
+        #User-selected percentage of maximum velocity (0.0 to 1.0)
+        self.manual_scale = 1.0
+
+        #Velocity reduction when approaching singularity
+        self.warning_scale = warning_scale
+
+        #E-stop state
+        self.estop_active = False
+
+    #MANUAL VELOCITY CONTROL
+    def set_manual_scale(self, scale):
+        """
+        Set operator requested velocity scale (0.0 to 1.0)
+        
+        example:
+            1.0 = 100%
+            0.5 = 50%
+            0.2 = 20%
+
+        """
+        self.manual_scale = float(np.clip(scale, 0.0, 1.0))
+
+    #E-STOP CONTROL
+
+    def trigger_estop(self):
+        """
+        Trigger the E-STOP button.
+        This will immediately stop all robot motion.
+        """
+        self.estop_active = True
+    def reset_estop(self):
+        """
+        Reset the E-STOP button.
+        This will allow robot motion to resume.
+        """
+        self.estop_active = False
+        
+    def is_estopped(self):
+        """
+        Return True if the E-STOP button is currently active.
+        """
+        return self.estop_active
+
+    #SAFETY VELOCITY CALCULATION
+    def get_velocity_scale(self, collision_result,singularity_result):
+        """
+        Determine final velocity scale
+        Priority: 
+        E-stop -> 0%
+        Collision risk -> 0%
+        Severe singularity -> 0%
+        Singularity warning -> reduced velocity
+        Otherwise -> operator requested velocity
+
+        """
+        #Highest priority: E-STOP button pressed
+        if self.estop_active:
+            return 0.0
+
+        #Collision = stop immediately
+        if not collision_result["safe"]:
+            return 0.0
+
+        singularty_level = singularity_result["level"]
+
+        #Severe singularity = stop immediately
+        if singularty_level == "STOP":
+            return 0.0
+
+        # Reduce velocity if approaching singularity
+        if singularty_level == "WARNING":
+            safety_scale = self.warning_scale
+        else:
+            safety_scale = 1.0
+        #Safety limit must override user setting
+        return min(self.manual_scale, safety_scale)
+    def get_allowed_velocity(self,collision_result, singularity_result):
+
+        """
+        Return actual allowable robot velocity
+        
+        """
+        scale = self.get_velocity_scale(collision_result, singularity_result)
+        return self.max_velocity * scale
