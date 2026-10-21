@@ -75,6 +75,10 @@ class StaubliShapeDraw:
     IK_TOL_MM = 0.05
     JOINT_WEIGHTS = np.array([3, 3, 2, 1, 1, 1])
 
+    # Eye-in-hand camera: pose of the camera frame in the flange frame (z = optical axis, along the tool).
+    # Keep it a pure translation: plan_look() relies on the camera and flange having the same orientation.
+    TOOL_TO_CAM = SE3(0.0, 0.08, -0.08)
+
     def __init__(self, base=None, q_home=None):
         self.robot = TX2_60()
         if base is not None:
@@ -95,6 +99,21 @@ class StaubliShapeDraw:
     # Flange pose in world coordinates for q (current q if None).
     def fk(self, q=None):
         return self.robot.fkine(self.robot.q if q is None else q)
+    
+    # Camera pose in world coordinates for q (current q if None).
+    def cam_pose(self, q=None):
+        return self.fk(q) * self.TOOL_TO_CAM
+
+    # Moves the arm so the camera looks straight down at world (cx, cy), cam_height above z_top.
+    # The flange target is derived from the camera target, so the camera (not the pen) ends up above the lid.
+    def plan_look(self, cx, cy, z_top, cam_height, steps=None):
+        T_cam = SE3(cx, cy, z_top + cam_height) * SE3.Ry(pi)
+        T_flange = T_cam * self.TOOL_TO_CAM.inv()
+        x, y, z = T_flange.t
+        q = self.solve_ik(x, y, z, q_seed=self.robot.q)
+        if q is None:
+            raise ValueError('StaubliShapeDraw: cannot reach the look pose')
+        return [('look', self.joint_traj(q, steps))]
 
     # Checks whether q sits within this robot's joint limits.
     def within_limits(self, q):
@@ -186,6 +205,39 @@ class StaubliShapeDraw:
         q = self.solve_ik(start_x, start_y, z_top + self.APPROACH, q_seed=cursor)
         plan.append(('retract', self.joint_traj(q, steps, q_start=cursor)))
         return plan
+    
+    # Plans several strokes one after another (outer outline first, then details), lifting the pen between them.
+    # correction_fn(i) may return an SE3 visual correction for stroke i (or None); the same SE3 convention as sensing.transform_path.
+    def plan_draw_strokes(self, strokes, z_top, steps=None, correction_fn=None):
+        import sensing
+        q_saved = self.robot.q.copy()
+        plan = []
+        try:
+            for i, stroke in enumerate(strokes):
+                if correction_fn is not None:
+                    correction = correction_fn(i)
+                    if correction is not None:
+                        pts = sensing.transform_path(stroke.points, correction, z_top)
+                        stroke = sensing.create_shape_model([(x, y) for x, y, _ in pts],
+                                                            cx=stroke.cx, cy=stroke.cy,
+                                                            size=stroke.size)
+                for label, traj in self.plan_draw_shape(stroke, z_top, steps):
+                    plan.append((f'stroke{i}_{label}', traj))
+                # next stroke starts from where this one ended
+                self.robot.q = plan[-1][1][-1]
+        finally:
+            self.robot.q = q_saved
+        return plan
+
+    # Confirms every stroke is reachable from this base.
+    def check_strokes(self, strokes, z_top):
+        try:
+            plan = self.plan_draw_strokes(strokes, z_top)
+        except ValueError as exc:
+            print(f'  {exc}')
+            return False
+        print(f'  StaubliShapeDraw: {len(strokes)} stroke(s) planned, {len(plan)} segments')
+        return True
 
     # Folds the arm back to its home pose.
     def plan_home(self, steps=None):
@@ -204,4 +256,14 @@ class StaubliShapeDraw:
             for q, (x, y) in zip(traj, pts_xy)]
         print(f'  StaubliShapeDraw: {shape.kind} traced, {len(traj)} steps, '
             f'off-plan {min(err):.1f}-{max(err):.1f} mm')
+        return True
+    
+    # Confirms the look pose above the lid is reachable from this base.
+    def check_look(self, cx, cy, z_top, cam_height):
+        try:
+            self.plan_look(cx, cy, z_top, cam_height)
+        except ValueError as exc:
+            print(f'  {exc}')
+            return False
+        print(f'  StaubliShapeDraw: look pose reachable, camera {cam_height:.2f} m above the lid')
         return True

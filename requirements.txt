@@ -293,8 +293,9 @@ zipp==4.1.0
 zstandard==0.25.0
 # --- Added for A2 DoGoodBot: advanced GUI (jog interface) ---
 PyQt5==5.15.11
-# Alternative Qt binding if PyQt5 licensing/build is an issue on some platforms
-# PySide6==6.7.2
+PyQtWebEngine==5.15.6
+# --- Added for A2 DoGoodBot: PyQt5 GUI automated testing ---
+pytest-qt==4.4.0
 
 # --- Added for A2 DoGoodBot: real robot serial/network communication ---
 pyserial==3.5
@@ -303,3 +304,5 @@ pyserial==3.5
 pymodbus==3.7.4
 # Use python-snap7 instead of pymodbus if the teaching PLC is Siemens S7 series
 python-snap7==2.0.2
+# --- Added for UR3e real robot (ROS via rosbridge on Raspberry Pi) ---
+roslibpy
